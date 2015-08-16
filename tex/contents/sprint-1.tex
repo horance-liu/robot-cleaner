@@ -1,0 +1,1086 @@
+\begin{savequote}[45mm]
+\ascii{I'm not a great programmer; I'm just a good programmer with great habits.}
+\qauthor{\ascii{- Kent Beck}}
+\end{savequote}
+
+\chapter{TurnTo} 
+\label{ch:turn-to}
+
+\section{需求}
+
+\begin{content}
+
+\begin{enum}
+\eitem{当\ascii{Robot}收到\ascii{LEFT}指令后，\ascii{Robot}向左转\ascii{90}度；}
+\eitem{当\ascii{Robot}收到\ascii{RIGHT}指令后，\ascii{Robot}向右转\ascii{90}度；}
+\end{enum}
+
+例如：
+\begin{enum}
+\eitem{\ascii{Robot}原来在\ascii{(0, 0, N)}，执行\ascii{LEFT}指令后，新的位置在\ascii{(0, 0, W)}；}
+\eitem{\ascii{Robot}原来在\ascii{(0, 0, N)}，执行\ascii{RIGHT}指令后，新的位置在\ascii{(0, 0, E)}；}
+\end{enum}
+
+\end{content}
+
+\section{破冰之旅}
+
+\begin{content}
+
+\subsection{第一个测试用例}
+
+从第一个测试用例开始，\ascii{Robot}初始位置应该在{(0, 0, N)}。
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+#include "testngpp/testngpp.hpp"
+
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+
+    TEST("at the beginning, the robot should be in at the initial position")
+    {
+        ASSERT_EQ(Position(0, 0, NORTH), robot.getPosition());
+    }
+};
+\end{c++}
+\end{leftbar}
+
+\subsection{通过编译}
+
+为了试图通过编译，先创建一个枚举类型\ascii{Orientation}，用于表示方向。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Orientation.h}]
+#ifndef H9811B75A_15B3_4DF0_91B7_483C42F74473
+#define H9811B75A_15B3_4DF0_91B7_483C42F74473
+
+enum Orientation { EAST, SOUTH, WEST, NORTH };
+
+#endif
+\end{c++}
+\end{leftbar}
+
+使用随机的生成的宏保护符，使得重命名类和文件名变得极为便捷。
+
+另外为\ascii{Orientation}新建一个头文件，即使它仅仅只有一行代码；而没有将所有代码实体都塞在一个头文件内，制造一个巨型头文件。如此实现给设计带来了诸多的好处：
+\begin{enum}
+\eitem{领域内的的\ascii{Orientation}概念，提供了更好的可复用性；}
+\eitem{职责更单一，从而可以得到更好的物理依赖；}
+\eitem{避免了上帝头文件，多人协作并行使用\ascii{GIT, SVN}等代码管理工具时，冲突的概率极大地被减低。}
+\end{enum}
+
+然后再创建一个\ascii{Position}类，用于描述\ascii{Robot}所在的地理位置信息。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Position.h}]
+#ifndef H722C49C6_D285_4885_88D1_97A11D669EE1
+#define H722C49C6_D285_4885_88D1_97A11D669EE1
+
+#include "robot-cleaner/Orientation.h"
+
+struct Position
+{
+    Position(int x, int y, Orientation orientation);
+
+    bool operator==(const Position&) const;
+};
+
+#endif
+\end{c++}
+\end{leftbar}
+
+是的，现在最紧急的目标是让代码编译通过，没有考虑\ascii{Position}是怎么实现的，从而没有考虑\ascii{Position}应该包含哪些成员变量。
+
+此外，Position重载了操作符\ascii{==}，使得它更加具有\ascii{Value Object}的特性；另外\ascii{Position.h}直接包含了\ascii{Orientation.h}，让\ascii{Position.h}具有自满足性，从而使用户无需为包含关系而烦恼。
+
+最后创建一个\ascii{RobotCleaner}类，用于描述\ascii{Robot}主体。就目前测试用例而言，默认构造函数即可，附加提供一个\ascii{getPosition}成员函数即可。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/RobotCleaner.h}]
+#ifndef H632C2FEA_66F0_4B68_B047_121B6CE1482E
+#define H632C2FEA_66F0_4B68_B047_121B6CE1482E
+
+struct Position;
+
+struct RobotCleaner
+{
+    Position getPosition() const;
+};
+
+#endif
+\end{c++}
+\end{leftbar}
+
+因为\ascii{getPosition}是一个查询函数，所以它被声明为\ascii{const}成员函数；此外，\ascii{Position}仅作为返回值，前置声明即可，无需包含它的头文件，从而降低了物理依赖性。
+
+\subsection{通过链接}
+
+为了尽快看到\ascii{make}的反馈，实现\ascii{RobotCleaner::getPosition}，及其\ascii{Position}类时，直接做了快速的伪实现，毕竟现在的目标只是让链接通过而已。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+#include "robot-cleaner/RobotCleaner.h"
+#include "robot-cleaner/Position.h"
+
+Position RobotCleaner::getPosition() const
+{
+    return Position(0, 0, NORTH);
+}
+\end{c++}
+\end{leftbar}
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+#include "robot-cleaner/Position.h"
+
+Position::Position(int x, int y, Orientation orientation)
+{}
+
+bool Position::operator==(const Position& rhs) const
+{
+    return false;
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{通过测试}
+
+此刻链接已经通过，但测试运行失败。为了尽快让测试通过，也只需将\ascii{Position}的比较逻辑快速实现。
+
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={include/robot-cleaner/Position.h}]
+#ifndef H722C49C6_D285_4885_88D1_97A11D669EE1
+#define H722C49C6_D285_4885_88D1_97A11D669EE1
+
+#include "robot-cleaner/Orientation.h"
+
+struct Position
+{
+    Position(int x, int y, Orientation orientation);
+
+    bool operator==(const Position&) const;    
+};
+
+#endif
+\end{c++}
+\end{minipage}%
+\hfill\vrule\hfill
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={include/robot-cleaner/Position.h}]
+#ifndef H722C49C6_D285_4885_88D1_97A11D669EE1
+#define H722C49C6_D285_4885_88D1_97A11D669EE1
+
+#include "robot-cleaner/Orientation.h"
+
+struct Position
+{
+    Position(int x, int y, Orientation orientation);
+
+    bool operator==(const Position&) const;
+    
+private:
+    int x;
+    int y;
+    Orientation orientation;
+};
+
+#endif
+\end{c++}
+\end{minipage}%
+
+实现比较逻辑也较为简单，创建\ascii{Position.cpp}直接实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+#include "robot-cleaner/Position.h"
+
+Position::Position(int x, int y, Orientation orientation)
+  : x(x), y(y), orientation(orientation)
+{}
+
+bool Position::operator==(const Position& rhs) const
+{
+    return x == rhs.x 
+        && y == rhs.y
+        && orientation = rhs.orientation;
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{重构}
+
+\subsubsection{显式实现}
+
+首先消除\ascii{RobotCleaner}的伪实现，创建一个\ascii{Position}的成员变量，并将\ascii{getPosition}的返回值类型修正为\ascii{const}引用。
+
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={include/robot-cleaner/RobotCleaner.h}]
+#ifndef H632C2FEA_66F0_4B68_B047_121B6CE1482E
+#define H632C2FEA_66F0_4B68_B047_121B6CE1482E
+
+struct Position;
+
+struct RobotCleaner
+{
+    Position getPosition() const;
+};
+
+#endif
+\end{c++}
+\end{minipage}%
+\hfill\vrule\hfill
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={include/robot-cleaner/RobotCleaner.h}]
+#ifndef H632C2FEA_66F0_4B68_B047_121B6CE1482E
+#define H632C2FEA_66F0_4B68_B047_121B6CE1482E
+
+#include "robot-cleaner/Position.h"
+
+struct RobotCleaner
+{
+    RobotCleaner();
+
+    const Position& getPosition() const;
+    
+private:
+    Position position;
+};
+
+#endif
+\end{c++}
+\end{minipage}%
+
+最后并将初始化的代码移植到构造函数中去。
+
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+#include "robot-cleaner/RobotCleaner.h"
+
+Position RobotCleaner::getPosition() const
+{
+    return Position(0, 0, NORTH);
+}
+\end{c++}
+\end{minipage}%
+\hfill\vrule\hfill
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+#include "robot-cleaner/RobotCleaner.h"
+
+RobotCleaner::RobotCleaner()
+  : position(0, 0, NORTH)
+{}
+
+const Position& RobotCleaner::getPosition() const
+{
+    return position;
+}
+\end{c++}
+\end{minipage}%
+
+\end{content}
+
+\section{left指令}
+
+\begin{content}
+
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]   
+TEST("the robot should be in (0, 0, W) when I send left instruction")
+{
+    robot.turnLeft();
+    ASSERT_EQ(Position(0, 0, WEST), robot.getPosition());
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{通过测试}
+
+为了快速通过测试用例，为\ascii{RobotCleaner}新增一个\ascii{turnLeft}成员函数。
+
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={include/robot-cleaner/RobotCleaner.h}]
+#ifndef H632C2FEA_66F0_4B68_B047_121B6CE1482E
+#define H632C2FEA_66F0_4B68_B047_121B6CE1482E
+
+#include "robot-cleaner/Position.h"
+
+struct RobotCleaner
+{
+    RobotCleaner();
+
+    const Position& getPosition() const;
+    
+private:
+    Position position;
+};
+
+#endif
+\end{c++}
+\end{minipage}%
+\hfill\vrule\hfill
+\begin{minipage}[t]{0.45\linewidth}
+\begin{c++}[caption={include/robot-cleaner/RobotCleaner.h}]
+#ifndef H632C2FEA_66F0_4B68_B047_121B6CE1482E
+#define H632C2FEA_66F0_4B68_B047_121B6CE1482E
+
+#include "robot-cleaner/Position.h"
+
+struct RobotCleaner
+{
+    RobotCleaner();
+    
+    void turnLeft();
+
+    const Position& getPosition() const;
+    
+private:
+    Position position;
+};
+
+#endif
+\end{c++}
+\end{minipage}%
+
+此处，对于实现\ascii{turnLeft}还没有更多的想法，先伪实现，确保测试尽快通过。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::turnLeft()
+{
+    position = Position(0, 0, WEST);
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{重构}
+
+\subsubsection{显式实现}
+
+先将\ascii{turnLeft}委托给\ascii{Position}。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::turnLeft()
+{
+    position.turnLeft();
+}
+\end{c++}
+\end{leftbar}
+
+在\ascii{make}之前，先将\ascii{Position::turnLeft()}伪实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::turnLeft()
+{
+    orientation = WEST;
+}
+\end{c++}
+\end{leftbar}
+
+确保测试通过后，继续消除\ascii{Position}的伪实现，为此再写一个测试，让问题变得更加明确。
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("the robot should be in (0, 0, S) when I send left instruction with 2 times")
+{
+    robot.turnLeft();
+    robot.turnLeft();
+    ASSERT_EQ(Position(0, 0, SOUTH), robot.getPosition());
+}
+\end{c++}
+\end{leftbar}
+
+为了快速让测试通过，先使用\ascii{switch-case}快速实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::turnLeft()
+{
+    orientation = WEST;
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation toLeft(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case WEST:  return SOUTH;
+        case NORTH: return WEST;
+        default: break;
+        }     
+        return orientation;
+    }
+}
+
+void Position::turnLeft()
+{
+    orientation = toLeft(orientation);
+}
+\end{c++}
+\end{tabular}
+
+重复这个微小的循环，覆盖所有的逻辑，确保自己永不犯错，每次通过测试都是修改非常少的代码而完成的，即使犯错也是非常容易定位和修正。
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("the robot should be in (0, 0, E) when I send left instruction with 3 times")
+{
+    robot.turnLeft();
+    robot.turnLeft();
+    robot.turnLeft();
+
+    ASSERT_EQ(Position(0, 0, EAST), robot.getPosition());
+}
+
+TEST("the robot should be in (0, 0, N) when I send left instruction with 4 times")
+{
+    robot.turnLeft();
+    robot.turnLeft();
+    robot.turnLeft();
+    robot.turnLeft();
+    
+    ASSERT_EQ(Position(0, 0, NORTH), robot.getPosition());
+}
+\end{c++}
+\end{leftbar}
+
+\ascii{toLeft}的实现也就被驱动完成了。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation toLeft(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return NORTH;
+        case SOUTH: return EAST;
+        case WEST:  return SOUTH;
+        case NORTH: return WEST;
+        default: break;
+        }     
+        return orientation;
+    }
+}
+
+void Position::turnLeft()
+{
+    orientation = toLeft(orientation);
+}
+\end{c++}
+\end{leftbar}
+
+也许与你共鸣，这样的设计非常不理想，已经存在很多明显的坏味道了。
+
+\begin{enum}
+\eitem{\ascii{switch-case}语句也让设计变得僵化；}
+\eitem{\ascii{Position}的\ascii{turnLeft}具有副作用；}
+\eitem{测试用例存在明显的重复代码；}
+\eitem{\ascii{turnLeft}具有严重的传染性，从\ascii{RobotCleaner}开始一直传递到\ascii{Position}。}
+\end{enum}
+
+但不管怎么样，我们依然还要继续，因为到目前为止，需求我们只完成了一半。此刻更需要拒绝诱惑，在测试通过之前就将设计做大做全，不仅仅损伤自信心，而且更让设计没完没了，走不到尽头。是的，让测试通过是压倒一切的中心任务。为了快速通过测试的过程之中所使用的一切不光彩的行为，要不了多长时间，我们会回来的。
+
+\end{content}
+
+\section{right指令}
+
+\begin{content}
+
+因为我们对于问题域已经基本明确，此外抛开设计良好与否，\ascii{turnRight}的实现基本上是通过\ascii{copy-paste}完成的。所以在\ascii{turnLeft}实现的经验之上，这次将步子稍微迈大一点，保证我们开发慢慢步入快速车道。总之需要根据实际情况，保持进度有快有慢，收放自如。
+
+但无论怎么样，还是要坚持如上述实现\ascii{toLeft}的步骤，小步实现\ascii{toRight}，这是一种良好的习惯。
+
+\subsection{快速实现}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]    
+TEST("the robot should be in (0, 0, E) when I send right instruction")
+{
+    robot.turnRight();
+    ASSERT_EQ(Position(0, 0, EAST), robot.getPosition());
+}
+
+TEST("the robot should be in (0, 0, S) when I send right instruction with 2-times")
+{
+    robot.turnRight();
+    robot.turnRight();
+    
+    ASSERT_EQ(Position(0, 0, SOUTH), robot.getPosition());
+}
+
+TEST("the robot should be in (0, 0, W) when I send right instruction with 3-times")
+{
+    robot.turnRight();
+    robot.turnRight();
+    robot.turnRight();
+
+    ASSERT_EQ(Position(0, 0, WEST), robot.getPosition());
+}
+
+TEST("the robot should be in (0, 0, N) when I send right instruction with 4-times")
+{
+    robot.turnRight();
+    robot.turnRight();
+    robot.turnRight();
+    robot.turnRight();
+
+    ASSERT_EQ(Position(0, 0, NORTH), robot.getPosition());
+}
+\end{c++}
+\end{leftbar}
+
+\ascii{turnRight}也非常简单，直接显示地实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::turnRight()
+{
+    position.turnRight();
+}
+\end{c++}
+\end{leftbar}
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation toRight(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return SOUTH;
+        case SOUTH: return WEST;
+        case WEST:  return NORTH;
+        case NORTH: return EAST;
+        default: break;
+        }
+        return orientation;
+    }
+}
+
+void Position::turnRight()
+{
+    orientation = toRight(orientation);
+}
+\end{c++}
+\end{leftbar}
+
+到目前为止，设计已经充满着坏味道，已经令人窒息。
+
+\begin{enum}
+\eitem{\ascii{turnLeft}与\ascii{turnRight}存在重复代码，并且犹如病毒一样，并在调用链上传递，从而使每一类都不能封闭修改；}
+\eitem{\ascii{Position}的\ascii{turnLeft}，\ascii{turnRight}具有副作用；}
+\eitem{测试代码也存在明显的重复设计；}
+\eitem{两个\ascii{switch-case}进一步导致设计的僵化性。}
+\end{enum}
+
+\end{content}
+
+\section{改善设计}
+
+\begin{content}
+     在这之前所有的实现，都是为了快速地实现需求，即使重构也做得非常小，每次改动都能保证测试的通过。但在实现需求的路上，也欠下了很多技术债务，为此在测试保护的情况下需要进一步改善即有的设计。
+
+\subsection{消除重复}
+
+当实现\ascii{turnRight}时，已经释放出强烈的坏味道，\ascii{turnLeft}与\ascii{turnRight}高度重复。消除\ascii{turnLeft}与\ascii{turnRight}之间的重复迫在眉睫。
+
+先改进\ascii{Position}的设计，使用\ascii{Position::turnTo}合并实现\ascii{Position::turnLeft}与\ascii{Position::turnRight}的实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep}% can be up to 0.5\linewidth 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation toLeft(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return NORTH;
+        case SOUTH: return EAST;
+        case WEST:  return SOUTH;
+        case NORTH: return WEST;
+        default: break;
+        }   
+        return orientation;
+    }
+
+    Orientation toRight(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return SOUTH;
+        case SOUTH: return WEST;
+        case WEST:  return NORTH;
+        case NORTH: return EAST;
+        default: break;
+        }
+        return orientation;
+    }
+}
+
+void Position::turnLeft()
+{
+    orientation = toLeft(orientation);
+}
+
+void Position::turnRight()
+{
+    orientation = toRight(orientation);
+}    
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation toLeft(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return NORTH;
+        case SOUTH: return EAST;
+        case WEST:  return SOUTH;
+        case NORTH: return WEST;
+        default: break;
+        }
+        
+        return orientation;
+    }
+
+    Orientation toRight(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return SOUTH;
+        case SOUTH: return WEST;
+        case WEST:  return NORTH;
+        case NORTH: return EAST;
+        default: break;
+        }
+        return orientation;
+    }
+    
+    Orientation to(bool left, Orientation orientation)
+    {
+       return left ? toLeft(orientation) : toRight(orientation);
+    }
+}
+
+void Position::turnTo(bool left)
+{
+    orientation = to(left, orientation);
+}
+\end{c++}
+\end{tabular}
+
+修改原来对\ascii{Position::turnLeft}与\ascii{Position::turnRight}的所有调用点，保证测试运行通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::turnLeft()
+{
+    position.turnLeft();
+}
+
+void RobotCleaner::turnRight()
+{
+    position.turnRight();
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::turnLeft()
+{
+    position.turnTo(true);
+}
+
+void RobotCleaner::turnRight()
+{
+    position.turnTo(false);
+}
+\end{c++}
+\end{tabular}
+
+虽然有晦涩的\ascii{true/false}接口，但暂时不要考虑，继续将\ascii{RobotCleaner::turnLeft}与\ascii{RobotCleaner::turnRight}之间的重复彻底消除。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::turnLeft()
+{
+    position.turnTo(true);
+}
+
+void RobotCleaner::turnRight()
+{
+    position.turnTo(false);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::turnTo(bool left)
+{
+    position.turnTo(left);
+}
+\end{c++}
+\end{tabular}
+
+修改原来对\ascii{RobotCleaner::turnLeft}与\ascii{RobotCleaner::turnRight}的所有调用点，确保测试快速通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+
+    TEST("the robot should be in (0, 0, W) when I send instruction left")
+    {
+        robot.turnLeft();
+        ASSERT_EQ(Position(0, 0, WEST), robot.getPosition());
+    }
+
+    TEST("the robot should be in (0, 0, E) when I send instruction right")
+    {
+        robot.turnRight();
+        ASSERT_EQ(Position(0, 0, EAST), robot.getPosition());
+    }
+};
+\end{c++}
+&
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+
+    TEST("the robot should be in (0, 0, W) when I send instruction left")
+    {
+        robot.turnTo(true);
+        ASSERT_EQ(Position(0, 0, WEST), robot.getPosition());
+    }
+
+    TEST("the robot should be in (0, 0, E) when I send instruction right")
+    {
+        robot.turnTo(false);
+        ASSERT_EQ(Position(0, 0, EAST), robot.getPosition());
+    }
+};
+\end{c++}
+\end{tabular}
+
+晦涩的\ascii{true/false}用户接口表现非常不佳，引来了很多反对的声音。有人建议将接口改回去，因为他们受不了这样的用户接口。
+
+事实上，消除\ascii{turnLeft}和\ascii{turnRight}重复优先级要更高，晦涩的\ascii{true/false}用户接口的表达力可以等待进一步改善和提高。
+
+此刻的重构只是一个开始，重构可是一个循序渐进的过程，我们无法在一个时刻解决所有的问题。不要担心目前设计的存在的一些问题，关键在于我们是否有持续演进的勇气和决心。
+
+\subsection{改善表达力}
+
+\subsubsection{改善bool接口的调用}
+
+首先要识别出\ascii{bool}接口到底存在什么样的坏味道？当用户调用\asccii{true}或者\asccii{false}的时候，不知道是什么含义，尤其调用点和被调用的距离越远，则问题越发突出。
+
+但是，当传递\ascii{bool}变量，而非字面值\ascii{true/false}的时候，如果变量的名字具有明显\ascii{bool}语义，例如携带\ascii{is, has, should}等前缀，则不存在接口调用时晦涩的问题。此刻\ascii{bool}变量就是一个普通的变量而已，与其他变量传递没有其他特别之处。
+
+所以不要盲目地排斥\ascii{bool}接口，有时候合理运用，则能消除大量的重复代码。对于目前的问题，首先需要改善晦涩的\ascii{true/false}的调用点，提高表达力。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+
+    TEST("the robot should be in (0, 0, W) when I send instruction left")
+    {
+        robot.turnTo(true);
+        ASSERT_EQ(Position(0, 0, WEST), robot.getPosition());
+    }
+
+    TEST("the robot should be in (0, 0, E) when I send instruction right")
+    {
+        robot.turnTo(false);
+        ASSERT_EQ(Position(0, 0, EAST), robot.getPosition());
+    }
+};
+\end{c++}
+&                 
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+
+    TEST("the robot should be in (0, 0, W) when I send instruction left")
+    {
+        robot.exec(LEFT);
+        ASSERT_EQ(Position(0, 0, WEST), robot.getPosition());
+    }
+
+    TEST("the robot should be in (0, 0, E) when I send instruction right")
+    {
+        robot.exec(RIGHT);
+        ASSERT_EQ(Position(0, 0, EAST), robot.getPosition());
+    }
+};
+\end{c++}
+\end{tabular}
+
+为此新建\ascii{Instruction.h}的头文件，用于表示\ascii{RobotCleaner}使用的指令集。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+enum Instruction { LEFT, RIGHT };
+
+#endif
+\end{c++}
+\end{leftbar}
+
+修改\ascii{RobotCleaner}的接口设计和实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={include/robot-cleaner/RobotCleaner.h}]
+void RobotCleaner::turnTo(bool left)
+{
+    position.turnTo(left);
+}
+\end{c++}
+&                 
+\begin{c++}[caption={include/robot-cleaner/RobotCleaner.h}]
+void RobotCleaner::exec(Instruction instruction)
+{
+    position.turnTo(instruction == LEFT);
+}
+\end{c++}
+\end{tabular}
+
+\ascii{true／false}字面值的之间调用，被替换为\ascii{instruction == LEFT}的调用，在局部上改进了用户的表达力。但到目前位置，我所力所能及了。至于是否存在更好的解决方案，等测试更加充分，需求变得更加明确时，在进一步改善。
+
+\subsubsection{改善用例的表达力}
+
+使用\ascii{BDD}改善用例的可读性。不仅如此，\ascii{BDD}让你更好地实践\ascii{TDD}。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+    
+    TEST("at the beginning, the robot should be in at the initial position")
+    {
+        ASSERT_EQ(Position(0, 0, NORTH), robot.getPosition());
+    }
+
+    TEST("the robot should be in (0, 0, W) when I send instruction left")
+    {
+        robot.exec(LEFT);
+        ASSERT_EQ(Position(0, 0, WEST), robot.getPosition());
+    }
+
+    TEST("the robot should be in (0, 0, E) when I send instruction right")
+    {
+        robot.exec(RIGHT);
+        ASSERT_EQ(Position(0, 0, EAST), robot.getPosition());
+    }
+};
+\end{c++}
+&
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+    
+    void WHEN_I_send_instruction(Instruction instruction)
+    {
+        robot.exec(instruction);
+    }
+    
+    void AND_I_send_instruction(Instruction instruction)
+    {
+        robot.exec(instruction);
+    }    
+
+    void THEN_the_robot_cleaner_should_be_in(const Position& position)
+    {
+        ASSERT_EQ(position, robot.getPosition());
+    }
+    
+    TEST("at the beginning")
+    {
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, NORTH));
+    }
+
+    TEST("left instruction")
+    {
+        WHEN_I_send_instruction(LEFT);
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, WEST));
+    }
+
+    TEST("right instruction")
+    {
+        WHEN_I_send_instruction(RIGHT);
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, EAST));
+    }
+};
+\end{c++}
+\end{tabular}
+
+\subsection{消除条件分支语句}
+
+快速实现\ascii{Position}时，遗留两个\ascii{switch-case}，让设计瞬间失去了光芒。透过对“方向”概念本质的理解，对于方向\ascii{turnTo}的操作，可以使用表驱动，即可消除糟糕的\ascii{switch-case}实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation toLeft(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return NORTH;
+        case SOUTH: return EAST;
+        case WEST:  return SOUTH;
+        case NORTH: return WEST;
+        default: break;
+        }
+        
+        return orientation;
+    }
+
+    Orientation toRight(Orientation orientation)
+    {
+        switch (orientation)
+        {
+        case EAST:  return SOUTH;
+        case SOUTH: return WEST;
+        case WEST:  return NORTH;
+        case NORTH: return EAST;
+        default: break;
+        }
+        return orientation;
+    }
+    
+    Orientation to(bool left, Orientation orientation)
+    {
+       return left ? toLeft(orientation) : toRight(orientation);
+    }
+}
+
+void Position::turnTo(bool left)
+{
+    orientation = to(left, orientation);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation orientations[] = { EAST, SOUTH, WEST, NORTH };
+
+    inline Orientation toLeft(Orientation orientation)
+    {
+        return orientations[(orientation + 3) % 4];
+    }
+    
+    inline Orientation toRight(Orientation orientation)
+    {
+        return orientations[(orientation + 1) % 4];
+    }
+
+    inline Orientation to(bool left, Orientation orientation)
+    {
+        return left ? toLeft(orientation) : toRight(orientation);
+    }
+}
+
+void Position::turnTo(bool left)
+{
+    orientation = to(left, orientation);
+}
+\end{c++}
+\end{tabular}
+
+\ascii{toLeft}与\ascii{toRight}算法实现依然存在重复，进一步消除重复。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation orientations[] = { EAST, SOUTH, WEST, NORTH };
+
+    inline Orientation toLeft(Orientation orientation)
+    {
+        return orientations[(orientation + 3) % 4];
+    }
+    
+    inline Orientation toRight(Orientation orientation)
+    {
+        return orientations[(orientation + 1) % 4];
+    }
+
+    inline Orientation to(bool left, Orientation orientation)
+    {
+        return left ? toLeft(orientation) : toRight(orientation);
+    }
+}
+
+void Position::turnTo(bool left)
+{
+    orientation = to(left, orientation);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation orientations[] = { EAST, SOUTH, WEST, NORTH };
+
+    inline int numOfTurnTo(bool left)
+    { return left ? 3 : 1; }
+}
+
+void Position::turnTo(bool left)
+{
+    orientation = orientations[(orientation + numOfTurnTo(left)) % 4];
+}
+\end{c++}
+\end{tabular}
+ 
+重构完毕，测试通过，设计也变得较为清晰。
+    
+\end{content}
+
+\section{遗留问题}
+
+\begin{content}
+
+至此，\ascii{TurnTo}已经实现了，但存在一些明显的坏味道，将其记录在\ascii{to-do list}中，后续再做改善。
+
+\begin{enum}
+\eitem{\ascii{Position}是一个典型的\ascii{Value Object}，\ascii{turnTo}的实现具有副作用；}
+\eitem{\ascii{Orientation}的枚举成员顺序与\ascii{Position.cpp}中定义的\ascii{orientations}数组元素的顺序，它们都是“方向顺序”这一知识的两种不同表现形式，具有设计的重复性；更为严重的是\ascii{turnTo}的算法实现强依赖于这样的约定，设计具有脆弱性；}
+\eitem{\ascii{RobotCleaner::exec}过于僵硬，扩展支持实现其他的指令时，问题更为突出；}
+\eitem{\ascii{turnTo}的传染性，让设计变得更加耦合；}
+\eitem{测试具有重复性。}
+\end{enum}
+
+\end{content}

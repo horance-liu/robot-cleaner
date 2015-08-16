@@ -1,0 +1,1034 @@
+\begin{savequote}[45mm]  
+\ascii{Any fool can write code that a computer can understand. Good programmers write code that humans can understand.}
+\qauthor{\ascii{- Martin Flower}}
+\end{savequote}
+
+\chapter{Orientation} 
+\label{ch:orientation}
+
+\section{改善设计}
+
+\begin{content}
+
+\subsection{重复设计}
+
+至此，所有的需求和测试均以通过，但还存在一个重要的问题还未解决。关于\ascii{Orientation}枚举成员顺序的知识重复。目前已经存在\ascii{3}个地方暗喻了这个知识的存在，而且更为严重的是，\ascii{MoveOn}和\ascii{TurnTo}的算法都与它们紧密关联。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Orientation.h}]
+#ifndef H9811B75A_15B3_4DF0_91B7_483C42F74473
+#define H9811B75A_15B3_4DF0_91B7_483C42F74473
+
+enum Orientation { EAST, SOUTH, WEST, NORTH };
+
+#endif
+\end{c++}
+\end{leftbar}
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation orientations[] = { EAST, SOUTH, WEST, NORTH };
+    const int offsets[] = { 1, 0, -1, 0 };
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{安全枚举类型}
+
+首先将\ascii{Orientation}从枚举提升为类，并快速恢复测试。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={include/robot-cleaner/Orientation.h}]
+#ifndef H9811B75A_15B3_4DF0_91B7_483C42F74473
+#define H9811B75A_15B3_4DF0_91B7_483C42F74473
+
+enum Orientation { EAST, SOUTH, WEST, NORTH };
+
+#endif
+\end{c++}
+&
+\begin{c++}[caption={include/robot-cleaner/Orientation.h}]
+#ifndef H9811B75A_15B3_4DF0_91B7_483C42F74473
+#define H9811B75A_15B3_4DF0_91B7_483C42F74473
+
+#include "base/EqHelper.h"
+
+struct Orientation
+{
+    operator int() const;
+
+#define DECL_ORIENTATION(orientation) \
+    static const Orientation orientation;
+
+    DECL_ORIENTATION(east)
+    DECL_ORIENTATION(south)
+    DECL_ORIENTATION(west)
+    DECL_ORIENTATION(north)
+    
+    DECL_EQUALS(Point);
+
+private:
+    Orientation(int order);
+
+private:
+    int order;
+};
+
+#define EAST  Orientation::east
+#define SOUTH Orientation::south
+#define WEST  Orientation::west
+#define NORTH Orientation::north
+
+#endif
+\end{c++}
+\end{tabular}
+
+此处暂时定义一个\ascii{Orientation::operator int}，让\ascii{Orientation}工作起来，就犹如普通的枚举类型一样参与整数运算，保证测试用例尽快运行成功。
+
+此时编译通过了，但链接不过，快速实现\ascii{Orientation.cpp}。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+#include "robot-cleaner/Orientation.h"
+
+Orientation::operator int() const
+{ 
+    return order; 
+}
+
+inline Orientation::Orientation(int order)
+  : order(order)
+{}
+
+#define DEF_ORIENTATION(orientation, order) \
+const Orientation Orientation::orientation(order);
+
+DEF_ORIENTATION(east,  0)
+DEF_ORIENTATION(south, 1)
+DEF_ORIENTATION(west,  2)
+DEF_ORIENTATION(north, 3)
+
+DEF_EQUALS(Orientation)
+{
+    return FIELD_EQ(order);
+}
+\end{c++}
+\end{leftbar}
+
+测试通过了，此处\ascii{Orientation}维护了一个\ascii{order}变量，类似于普通枚举成员的值。
+
+最后将原来\ascii{Orientation}的所有\ascii{pass-by-value}的地方都换成\ascii{pass-by-ref-to-const}，保证测试运行通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+Position::Position(int x, int y, Orientation orientation)
+  : x(x), y(y), orientation(orientation)
+{
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+Position::Position(int x, int y, const Orientation& orientation)
+  : x(x), y(y), orientation(orientation)
+{
+}
+\end{c++}
+\end{tabular}
+
+如此设计，将\ascii{Orientation}枚举成员的顺序内聚在了一块，包括名称、编号。但它由原来单纯的枚举类型升级为类，将获得更大弹性的设计空间。
+
+\subsection{搬迁职责}
+
+将\ascii{Position}中关于\ascii{orientation}的一些逻辑搬迁至\ascii{Orientation}类中去，
+
+\subsubsection{搬迁\ascii{TurnTo}}
+
+将\ascii{TurnTo}的逻辑从\ascii{Position.cpp}搬迁过来，从而完全地将\ascii{Orientation}设计为值对象。此处用了一个小技巧，通过\ascii{Orientation}的构造函数，将它自动地注册给了\ascii{orientations}数组中。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+namespace
+{
+    Orientation* orientations[4] = { nullptr };
+
+    inline int numOfTurnTo(bool left)
+    { return left ? 3 : 1; }
+}
+
+Orientation& Orientation::turnTo(bool left) const
+{
+    return *orientations[(order + numOfTurnTo(left)) % 4];
+}
+
+inline Orientation::Orientation(int order)
+  : order(order)
+{
+    orientations[order] = this;
+}
+
+#define DEF_ORIENTATION(orientation, order) \
+const Orientation Orientation::orientation(order);
+
+DEF_ORIENTATION(east,  0)
+DEF_ORIENTATION(south, 1)
+DEF_ORIENTATION(west,  2)
+DEF_ORIENTATION(north, 3)
+\end{c++}
+\end{leftbar}
+
+保证测试通过后，再将\ascii{Position}中的\ascii{TurnTo}的逻辑委托给\ascii{Orientation}类，然后将\ascii{Position.cpp}冗余的代码删除掉，确保测试通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    Orientation orientations[] = { EAST, SOUTH, WEST, NORTH };
+    
+    inline int numOfTurnTo(bool left)
+    { return left ? 3 : 1; }
+}
+
+void Position::turnTo(bool left)
+{
+    orientation = orientations[(orientation + numOfTurnTo(left)) % 4];
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::turnTo(bool left)
+{
+    orientation = orientation.turnTo(left);
+}
+\end{c++}
+\end{tabular}
+
+测试通过，重构完毕。
+
+\subsubsection{搬迁\ascii{MoveOn}}
+
+先为\ascii{Orientation}对象增加\ascii{offset}字段，当执行\ascii{forward}时，用于表示在\ascii{X}轴移动的单位数目。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+#include "robot-cleaner/Orientation.h"
+
+namespace
+{
+    Orientation* orientations[4] = { nullptr };
+}
+
+inline Orientation::Orientation(int order)
+  : order(order)
+{
+    orientations[order] = this;
+}
+
+#define DEF_ORIENTATION(orientation, order) \
+const Orientation Orientation::orientation(order);
+
+DEF_ORIENTATION(east,  0)
+DEF_ORIENTATION(south, 1)
+DEF_ORIENTATION(west,  2)
+DEF_ORIENTATION(north, 3)
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+#include "robot-cleaner/Orientation.h"
+
+namespace
+{
+    Orientation* orientations[4] = { nullptr };
+}
+
+inline Orientation::Orientation(int order, int offset)
+  : order(order), offset(offset)
+{
+    orientations[order] = this;
+}
+
+#define DEF_ORIENTATION(orientation, order, offset) \
+const Orientation Orientation::orientation(order, offset);
+
+DEF_ORIENTATION(east,  0, 1)
+DEF_ORIENTATION(south, 1, 0)
+DEF_ORIENTATION(west,  2, -1)
+DEF_ORIENTATION(north, 3, 0)
+\end{c++}
+\end{tabular}
+
+将\ascii{MoveOn}的逻辑从\ascii{Position}搬迁到\ascii{Orientation}中来，快速通过测试用例。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+inline int Orientation::diff(int order) const
+{ 
+    return orientations[order]->offset; 
+}
+
+inline int Orientation::xOffset() const
+{ 
+    return diff(order); 
+}
+
+inline int Orientation::yOffset() const
+{ 
+    return diff(3-order); 
+}
+
+void Orientation::moveOn(int& x, int& y, int step) const
+{
+    x += step*xOffset();
+    y += step*yOffset();
+}
+\end{c++}
+\end{leftbar}
+
+其中，\ascii{Orientation::moveOn}表示将\ascii{(x, y)}沿着该方向移动\ascii{step}。
+
+测试通过后，将\ascii{Position::moveOn}委托给\ascii{Orientation::moveOn}，确保测试通过后，删除\ascii{Position}中无用的代码。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    const int offsets[] = { 1, 0, -1, 0 };
+}
+
+inline int Position::xOffset()
+{ 
+    return offsets[orientation]; 
+}
+
+inline int Position::yOffset()
+{ 
+    return offsets[3 - orientation]; 
+}
+
+void Position::moveOn(int step)
+{
+    x += step*xOffset();
+    y += step*yOffset();
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::moveOn(int step)
+{
+    orientation.moveOn(x, y, step);
+}
+\end{c++}
+\end{tabular}
+
+测试通过，重构完毕。最后将\ascii{Orientation::operator int}删除，将其完全升级为安全的枚举类型，确保测试通过。
+
+\subsubsection{抽取Point}
+
+设计\ascii{Orientation::moveOn}时，传递了基本数据类型\ascii{(x, y)}，这显然是不明智的，需要进一步处理。通过分析，其实\ascii{(x, y)}代表的是\ascii{Robot}的坐标信息，在此提取一个\ascii{Point}概念。
+
+先建立了\ascii{Point}的概念，暂时将成员变量公开，以便测试尽快通过。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Point.h}]
+#ifndef H65A54D80_942C_4AB0_846B_A0568EA5200D
+#define H65A54D80_942C_4AB0_846B_A0568EA5200D
+    
+#include "base/EqHelper.h"  
+  
+sturct Point
+{
+    Point(int x, int y);
+    
+    DECL_EQUALS(Point);
+    
+    int x;
+    int y;
+};
+
+#endif
+\end{c++}
+\end{leftbar}
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Point.cpp}]
+#include "robot-cleaner/Point.cpp"
+
+Point::Point(int x, int y)
+  : x(x), y(y)
+{}
+
+DEF_EQUALS(Point)
+{
+    return FIELD_EQ(x) && FIELD_EQ(y);
+}
+
+\end{c++}
+\end{leftbar}
+
+测试通过后，将\ascii{Point}的概念加入到\ascii{Position}类中，让所有测试运行通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]  
+Position::Position(int x, int y, const Orientation& orientation)
+  : x(x), y(y), orientation(orientation)
+{}
+  
+void Position::moveOn(int step)
+{
+    orientation.moveOn(x, y, step);
+}
+
+DEF_EQUALS(Position)
+{
+    return FIELD_EQ(x) && FIELD_EQ(y) && FIELD_EQ(orientation);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]  
+Position::Position(int x, int y, const Orientation& orientation)
+  : point(x, y), orientation(orientation)
+{}
+  
+void Position::moveOn(int step)
+{
+    orientation.moveOn(point, step);
+}
+
+DEF_EQUALS(Position)
+{
+    return FIELD_EQ(point) && FIELD_EQ(orientation);
+}
+\end{c++}
+\end{tabular}
+
+其中，\ascii{orientation.moveOn(point, step)}表示：将\ascii{point}沿着\ascii{orientation}方向移动\ascii{step}步，但表达力明显下降。如果换成\ascii{point.moveOn(step, orientation)}，则更能体现这个含义。暂时这样处理，接下来再做进一步处理。
+
+接下来，为了修正编译错误，尽快恢复测试，再将\ascii{Orientation::moveOn}的入参换为\ascii{Point}类型。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+void Orientation::moveOn(int& x, int& y, int step) const
+{
+    x += step*xOffset();
+    y += step*yOffset();
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+void Orientation::moveOn(Point& point, int step) const
+{
+    point.x += step*xOffset();
+    point.y += step*yOffset();
+}
+\end{c++}
+\end{tabular}
+
+测试通过后，再将\ascii{Orientation::moveOn}中运算搬迁到\ascii{Point::move}中去。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+void Orientation::moveOn(Point& point, int step) const
+{
+    point.x += step*xOffset();
+    point.y += step*yOffset();
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+void Orientation::moveOn(Point& point, int step) const
+{
+    point.move(step, xOffset(), yOffset());
+}
+\end{c++}
+\end{tabular}
+
+而\ascii{Point}增加\ascii{move}接口，完成最后的偏移运算。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Point.cpp}]
+void Point::move(int step, int xOffset, int yOffset)
+{
+    x += step*xOffset;
+    y += step*yOffset;
+}
+\end{c++}
+\end{leftbar}
+
+测试通过后，再将\ascii{Point::x, Point::y}隐藏起来，保证测试通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={include/robot-cleaner/Point.h}]  
+#ifndef H65A54D80_942C_4AB0_846B_A0568EA5200D
+#define H65A54D80_942C_4AB0_846B_A0568EA5200D
+
+#include "base/EqHelper.h"
+
+struct Point
+{
+    Point(int x, int y);
+
+    void move(int xOffset, int yOffset);
+
+    __DECL_EQUALS(Point);
+
+    int x;
+    int y;
+};
+
+#endif
+\end{c++}
+&
+\begin{c++}[caption={include/robot-cleaner/Point.h}]  
+#ifndef H65A54D80_942C_4AB0_846B_A0568EA5200D
+#define H65A54D80_942C_4AB0_846B_A0568EA5200D
+
+#include "base/EqHelper.h"
+
+struct Point
+{
+    Point(int x, int y);
+
+    void move(int xOffset, int yOffset);
+
+    __DECL_EQUALS(Point);
+
+private:
+    int x, y;
+};
+
+#endif
+\end{c++}
+\end{tabular}
+
+测试通过了，此刻彻底消除了“方向顺序”的知识在三个地方存在三种表示的重复设计，将三张表规整为一张表。不仅在物理位置上的统一，也将归属于自身的职责也搬迁过来了，知识更加内聚。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+DEF_ORIENTATION(east,  0, 1)
+DEF_ORIENTATION(south, 1, 0)
+DEF_ORIENTATION(west,  2, -1)
+DEF_ORIENTATION(north, 3, 0)
+\end{c++}
+\end{leftbar}
+
+\subsection{依恋情节}
+
+至此，还存在几个明显的坏味道有待进一步改善。
+
+\begin{enum}
+\eitem{从职责归属关系看，让\ascii{Position}承担\ascii{turnTo, moveOn}的语义有些晦涩；}
+\eitem{\ascii{Position}与\ascii{Orientation}之间存在不必要的依赖关系，两者因为增加新的指令都不能独立变化，未能做到彻底的修改的封闭性。}
+\eitem{\ascii{Instruction}的\ascii{turnTo}，\ascii{moveOn}实现具有副作用。}
+\end{enum}
+
+\subsubsection{TDA}
+
+首先，修改\ascii{Instruction}的接口。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]  
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position&));
+};
+\end{c++}
+&
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}] 
+struct Point;
+struct Orientation;  
+ 
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Point&, Orientation&));
+};
+\end{c++}
+\end{tabular}
+
+先修改\ascii{RobotCleaner::exec}的实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]  
+void RobotCleaner::exec(Instruction* instruction)
+{
+    instruction->exec(position);
+    delete instruction;
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]  
+void RobotCleaner::exec(Instruction* instruction)
+{
+    instruction->exec(point.getPoint(), orientation.getOrientation());
+    delete instruction;
+}
+\end{c++}
+\end{tabular}
+
+最后删除\ascii{Position}的\ascii{turnTo, moveOn}接口，并为其增加新的接口。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]  
+Point& Position::getPoint()
+{
+    return point;
+}
+
+Orientation& Position::getOrientation()
+{
+    return orientation;
+}
+\end{c++}
+\end{leftbar}
+
+接下来，修改和实现\ascii{Instruction}所有的子类实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]  
+namespace
+{
+    struct EmptyInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position)) {}
+    };
+
+    struct TurnToInstruction : Instruction
+    {
+        explicit TurnToInstruction(bool left)
+          : left(left)
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        { 
+            position.turnTo(left);
+        }
+
+    private:
+        bool left;
+    };
+
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(bool forward, int n)
+          : step(prefix(forward)*n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        { 
+            position.moveOn(step); 
+        }
+
+    private:
+        static int prefix(bool forward)
+        { 
+            return forward ? 1 : -1; 
+        }
+
+    private:
+        int step;
+    };
+
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(position);
+            }
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+
+    struct SequentialInstruction : Instruction
+    {
+        SequentialInstruction(std::initializer_list<Instruction*> instructions)
+          : instructions(instructions)
+        {}
+
+        ~SequentialInstruction()
+        {
+            for(auto instruction : instructions)
+            {
+                delete instruction;
+            }
+        }
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            for(auto instruction : instructions)
+            {
+                instruction->exec(position);
+            }
+        }
+
+    private:
+        std::vector<Instruction*> instructions;
+    };
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]  
+namespace
+{
+    struct EmptyInstruction : Instruction
+    {
+        OVERRIDE(void exec(Point&, Orientation&)) {}
+    };
+
+    struct TurnToInstruction : Instruction
+    {
+        explicit TurnToInstruction(bool left)
+          : left(left)
+        {}
+
+    private:
+        OVERRIDE(void exec(Point&, Orientation& orientation))
+        {
+            orientation = orientation.turnTo(left);
+        }
+
+    private:
+        bool left;
+    };
+
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(bool forward, int n)
+          : step(prefix(forward)*n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Point& point, Orientation& orientation))
+        { 
+            orientation.moveOn(point, step); 
+        }
+
+    private:
+        static int prefix(bool forward)
+        { 
+            return forward ? 1 : -1;
+        }
+
+    private:
+        int step;
+    };
+
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Point& point, Orientation& orientation))
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(point, orientation);
+            }
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+
+    struct SequentialInstruction : Instruction
+    {
+        SequentialInstruction(std::initializer_list<Instruction*> instructions)
+          : instructions(instructions)
+        {}
+
+        ~SequentialInstruction()
+        {
+            for(auto instruction : instructions)
+            {
+                delete instruction;
+            }
+        }
+
+    private:
+        OVERRIDE(void exec(Point& point, Orientation& orientation))
+        {
+            for(auto instruction : instructions)
+            {
+                instruction->exec(point, orientation);
+            }
+        }
+
+    private:
+        std::vector<Instruction*> instructions;
+    };
+}
+\end{c++}
+\end{tabular}
+
+最后删除\ascii{Position}的\ascii{turnTo, moveOn}接口，保证测试通过。
+  
+测试通过了，此刻\ascii{Position}与\ascii{Orientation}之间，及其\ascii{Position}与新增\ascii{Instruction}之间的耦合度被降低了；另外，\ascii{Position}也不承担晦涩的\ascii{turnTo, moveOn}的职责。
+
+这是\ascii{TDA, Tell, Don't Ask}原则一个具体运用，但也为此付出了另外的代价：\ascii{Position}不得不提供两个\ascii{get}接口，而且是可修改的引用类型。
+
+\subsubsection{改善表达力}
+
+\eitem{\ascii{MoveInstruction}实现\ascii{moveOn}时，委托给了\ascii{Orientation}，让\ascii{Orientation}承担\ascii{moveOn}的职责有些晦涩，应该将两者的语义换一下。}
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]  
+struct MoveOnInstruction : Instruction
+{
+    explicit MoveOnInstruction(bool forward, int n)
+      : step(prefix(forward)*n)
+    {}
+
+private:
+    OVERRIDE(void exec(Point& point, Orientation& orientation))
+    { 
+        orientation.moveOn(point, step); 
+    }
+
+private:
+    static int prefix(bool forward)
+    { 
+        return forward ? 1 : -1;
+    }
+
+private:
+    int step;
+};
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]  
+struct MoveOnInstruction : Instruction
+{
+    explicit MoveOnInstruction(bool forward, int n)
+      : step(prefix(forward)*n)
+    {}
+
+private:
+    OVERRIDE(void exec(Point& point, Orientation& orientation))
+    { 
+        point = point.moveOn(step, orientation);
+    }
+
+private:
+    static int prefix(bool forward)
+    { 
+        return forward ? 1 : -1;
+    }
+
+private:
+    int step;
+};
+\end{c++}
+\end{tabular}
+
+\ascii{point.moveOn}表示\ascii{point}沿着\ascii{orientation}方向移动了\ascii{step}步后到了一个新的位置。
+
+然后将\ascii{Point::move}重构为\ascii{Point::moveOn}，保证测试通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Point.cpp}]
+void Point::move(int step, int xOffset, int yOffset)
+{
+    x += step*xOffset;
+    y += step*yOffset;
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Point.cpp}]
+Point Point::moveOn(int step, const Orientation& orientation)
+{
+    return Point( x+step*orientation.getXOffset()
+                , y+step*orientation.getYOffset());
+}
+\end{c++}
+\end{tabular}
+
+但需要暴露\ascii{Orientation::getXOffset，Orientation::getYOffset}。这不是一个很好的设计，可以将\ascii{Point::x, Point::y}传递给\ascii{Orientation}，根据\ascii{Orientation}自身所处的方向，将\ascii{x, y}向前移动\ascii{step}，并返回一个新的\ascii{Point}位置。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Point.cpp}]
+Point Point::moveOn(int step, const Orientation& orientation)
+{
+    return Point( x+step*orientation.getXOffset()
+                , y+step*orientation.getYOffset());
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Point.cpp}]
+Point Point::moveOn(int step, const Orientation& orientation)
+{
+    return orientation.moveOn(x, y, step);
+}
+\end{c++}
+\end{tabular}
+
+最后重构实现\ascii{Orientation::moveOn}的逻辑。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+void Orientation::moveOn(Point& point, int step) const
+{
+    point.move(step, xOffset(), yOffset());
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+Point Orientation::moveOn(int x, int y, int step) const
+{
+    return Point(x+step*xOffset(), y+step*yOffset());
+}
+\end{c++}
+\end{tabular}
+
+测试通过了。接下来将\ascii{Position}提供的两个\ascii{get}接口消除掉，使用多重继承更好可以表达它们之间的聚合关系。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+#include "robot-cleaner/Point.h"
+#include "robot-cleaner/Orientation.h"
+
+struct Position
+{
+    Position(int x, int y, const Orientation& orientation);
+
+    DECL_EQUALS(Position);
+    
+    Point& getPoint();
+    Orientation& getOrientation();
+    
+private:
+    Point point;
+    Orientation orientation;
+};
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Orientation.cpp}]
+#include "robot-cleaner/Point.h"
+#include "robot-cleaner/Orientation.h"
+
+struct Position : Point, Orientation
+{
+    Position(int x, int y, const Orientation& orientation);
+
+    DECL_EQUALS(Position);
+};
+\end{c++}
+\end{tabular}
+
+先修改\ascii{RobotCleaner::exec}的实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]  
+void RobotCleaner::exec(Instruction* instruction)
+{
+    instruction->exec(point.getPoint(), orientation.getOrientation());
+    delete instruction;
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]  
+void RobotCleaner::exec(Instruction* instruction)
+{
+    instruction->exec(SELF(position, Point), SELF(position, Position));
+    delete instruction;
+}
+\end{c++}
+\end{tabular}
+
+测试通过了，重构完毕。
+
+\end{content}
+
+\section{最后的话}
+
+\begin{content}
+
+首先看\ascii{Instruction}的设计，它将指令执行的算法封装起来，独立地随这指令集变化而变化；并且提供了工厂方法，对外提供\ascii{DSL}，将它的子类实现全部隐藏到了实现文件中，对外暴露的只有\ascii{Instruction}的抽象接口，在提高表达力的同时，增强了信息隐藏的机制。
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "infra/base/Role.h"
+#include <initializer_list>
+
+struct Point;
+struct Orientation;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Point& point, Orientation& orientation) const);
+};
+
+Instruction* left();
+Instruction* right();
+
+Instruction* forward_n(int n);
+Instruction* backward_n(int n);
+Instruction* repeat(Instruction*, int n);
+
+inline Instruction* forward()
+{ return forward_n(1);  }
+
+inline Instruction* backward()
+{ return backward_n(1); }
+
+inline Instruction* round()
+{ return repeat(right(), 2); }
+
+Instruction* __sequential(std::initializer_list<Instruction*>);
+
+#define sequential(...) __sequential({ __VA_ARGS__ })
+
+#endif
+\end{c++}
+\end{leftbar}
+
+再来看\ascii{Position}与\ascii{Point}，\ascii{Orientation}之间的关系。\ascii{Position}是由\ascii{Point}和\ascii{Orientation}聚合而成的。\ascii{Point}具有\ascii{MoveOn}的语义，而\ascii{Orientation}具有\ascii{TurnTo}的语义；另外，\ascii{Point::moveOn}时，是以\ascii{Orientation}的方向来决定该怎么移动的，所以\ascii{Orientation}将协作\ascii{Point}完成\ascii{MoveOn}的移动过程。
+
+接着看\ascii{Instruction}与\ascii{Point},\ascii{Orientation}的关系。\ascii{TurnToInstruction}将于\ascii{Orientation}交互完成转向；\ascii{MoveOnInstruction}将与\ascii{Point}交互，在\ascii{Orientation}的协作下完成移动。
+
+需要强调的是，\ascii{Instruction}与\ascii{Position}没有任何关系，它在领域内只是对\ascii{Point}，\ascii{Orientation}聚合而已。
+
+最后重要的是，\ascii{TurnLeft}与\ascii{TurnRight}之间，\ascii{Forward}与\ascii{Backward}之间，犹如正反两方面。如果存在\ascii{TurnLeftInstrction}, \ascii{TurnRightInstructin}两个概念，并且它们的逻辑实现没有依赖一个更本质的抽象，则它们之间是存在重复设计的。
+
+我们将\ascii{TurnLeftInstrction}, \ascii{TurnRightInstructin}两个概念合并为\ascii{TurnToInstruction}，而将\ascii{ForwardInstrction}, \ascii{BackwardInstructin}两个概念合并为\ascii{MoveOnInstruction}，采用了简单\ascii{bool}接口消除它们逻辑上的重复。
+
+当然，此处\ascii{bool}接口的使用没有影响用户友好性，因为用户使用的是抽象了的、友好性的\ascii{DSL}接口，例如\ascii{left()}或者\ascii{right()}指令；另外，调用字面值\ascii{true/false}时，与定义实现并不远，也不存在晦涩难懂，需要用户跳转代码等难题。
+
+\end{content}

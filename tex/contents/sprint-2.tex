@@ -1,0 +1,746 @@
+\begin{savequote}[45mm]
+\ascii{Write programs for people first, computers second.}
+\qauthor{\ascii{- Steve McConnell}}
+\end{savequote}
+
+\chapter{MoveOn} 
+\label{ch:move-on}
+
+\section{需求}
+
+\begin{content}
+
+\begin{enum}
+\eitem{当\ascii{Robot}收到\ascii{FORWARD}指令后，\ascii{Robot}保持方向，并向前移动一个坐标；}
+\eitem{当\ascii{Robot}收到\ascii{BACKWARD}指令后，\ascii{Robot}保持方向，并向后移动一个坐标；}
+\end{enum}
+
+例如：
+\begin{enum}
+\eitem{\ascii{Robot}原来在\ascii{(0, 0, N)}，执行\ascii{FORWARD}指令后，新的位置在\ascii{(0, 1, N)}；}
+\eitem{\ascii{Robot}原来在\ascii{(0, 0, N)}，执行\ascii{BACKWARD}指令后，新的位置在\ascii{(0, -1, N)}；}
+\end{enum}
+
+\end{content}
+
+\section{forward指令}
+
+\begin{content}
+
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("forward instruction")
+{
+    WHEN_I_send_instruction(FORWARD);
+    THEN_the_robot_cleaner_should_be_in(Position(0, 1, NORTH));
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{引入Command模式}
+
+为了试图通过测试用例，简单伪实现\ascii{RobotCleaner::exec}。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::exec(Instruction instruction)
+{
+    position.turnTo(instruction == LEFT);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+void RobotCleaner::exec(Instruction instruction)
+{
+    if (instruction == FORWARD)
+    {
+        position = Position(0, 1, NORTH);
+        return;
+    }
+
+    position.turnTo(instruction == LEFT);
+}
+\end{c++}
+\end{tabular}
+
+测试虽然通过了，但设计已经变得无法容忍的境地了。此时需要分离出\ascii{Instruction}的变化方向，将它与执行指令的主体\ascii{RobotCleaner}相分离。为此引入\ascii{Command}模式，将指令执行的算法封装在独立的对象中，从而方便地支持指令集的扩展。
+
+首先将\ascii{Instruction}从枚举升级为接口类；为了快速恢复测试的运行，暂时保留诸如\ascii{LEFT, RIGHT, FOWARD}等常量。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+struct Instruction { LEFT, RIGHT, FORWARD };
+
+#endif
+\end{c++}
+&
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* left();
+Instruction* right();
+Instruction* forward();
+
+#define LEFT    left()
+#define RIGHT   right()
+#define FORWARD forward()
+
+#endif
+\end{c++}
+\end{tabular}
+
+修改原来对\ascii{Instruction}的所有调用，包括测试用例，此刻需要传递指针类型了；另外，还需要修改\ascii{RobotCleaner::exec}的接口设计和实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+#include "robot-cleaner/RobotCleaner.h"
+#include "robot-cleaner/Instruction.h"
+
+void RobotCleaner::exec(Instruction instruction)
+{
+    if (instruction == FORWARD)
+    {
+        position = Position(0, 1, NORTH);
+        return;
+    }
+
+    position.turnTo(instruction == LEFT);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/RobotCleaner.cpp}]
+#include "robot-cleaner/RobotCleaner.h"
+#include "robot-cleaner/Instruction.h"
+
+void RobotCleaner::exec(Instruction* instruction)
+{
+    instruction->exec(position);
+    delete instruction;
+}
+\end{c++}
+\end{tabular}
+
+此刻链接是失败的，为了快速链接和测试用例，创建\ascii{Instruction.cpp}的文件，实现所有的工厂方法，并将\ascii{ForwardInstruction}暂时进行伪实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+#include "robot-cleaner/Instruction.h"
+#include "robot-cleaner/Position.h"
+
+namespace
+{
+    struct TurnToInstruction : Instruction
+    {
+        explicit TurnToInstruction(bool left)
+          : left(left)
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            position.turnTo(left);
+        }
+
+    private:
+        bool left;
+    };
+}
+
+Instruction* left()
+{ return new TurnToInstruction(true); }
+
+Instruction* right()
+{ return new TurnToInstruction(false); }
+
+namespace
+{
+    struct ForwardInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position = Position(0, 1, NORTH);
+        }
+    };
+}
+
+Instruction* forward()
+{ return new ForwardInstruction; }
+\end{c++}
+\end{leftbar}
+
+\subsection{消除重复}
+
+\ascii{Instruction}中指令存在重复，例如\ascii{left}和\ascii{LEFT}事实上是同一个概念。宏定义的存在主要是为了让测试尽快通过而暂时保留的产物。
+
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* left();
+Instruction* right();
+Instruction* forward();
+
+#define LEFT    left()
+#define RIGHT   right()
+#define FORWARD forward()
+
+#endif
+\end{c++}
+
+首先直接使用工厂方法替代宏定义表示指令，确保测试快速通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("left instruction")
+{
+    WHEN_I_send_instruction(LEFT);
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, WEST));
+}
+
+TEST("right instruction")
+{
+    WHEN_I_send_instruction(RIGHT);
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, EAST));
+}
+
+TEST("forward instruction")
+{
+    WHEN_I_send_instruction(FORWARD);
+    THEN_the_robot_cleaner_should_be_in(Position(0, 1, NORTH));
+}
+\end{c++}
+&
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("left instruction")
+{
+    WHEN_I_send_instruction(left());
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, WEST));
+}
+
+TEST("right instruction")
+{
+    WHEN_I_send_instruction(right());
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, EAST));
+}
+
+TEST("forward instruction")
+{
+    WHEN_I_send_instruction(forward());
+    THEN_the_robot_cleaner_should_be_in(Position(0, 1, NORTH));
+}
+\end{c++}
+\end{tabular}
+
+然后从\ascii{Instruction.h}删除指令的所有宏定义，运行测试保证通过。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* left();
+Instruction* right();
+Instruction* forward();
+
+#define LEFT    left()
+#define RIGHT   right()
+#define FORWARD forward()
+
+#endif
+\end{c++}
+&
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* left();
+Instruction* right();
+Instruction* forward();
+
+#endif
+\end{c++}
+\end{tabular}
+
+\subsection{实现forward指令}
+
+先消除\ascii{ForwardInstruction::exec}的伪实现, 将\ascii{ForwardInstruction::exec}委托给\ascii{Position}。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct ForwardInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position = Position(0, 0, E);
+        }
+    };
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct ForwardInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position.forward();
+        }
+    };
+}
+\end{c++}
+\end{tabular}
+
+为了让测试尽快通过，然后对\ascii{Position::forward}进行伪实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::forward()
+{
+    y += 1;
+}
+\end{c++}
+\end{leftbar}
+
+\subsubsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("left, forward instructions")
+{
+    WHEN_I_send_instruction(left());
+    WHEN_I_send_instruction(forward());
+    
+    THEN_the_robot_cleaner_should_be_in(Position(-1, 0, WEST));
+}
+\end{c++}
+\end{leftbar}
+
+然后对\ascii{Position::forward}进行伪实现，简单地使用\ascii{switch-case}实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::forward()
+{
+    switch (orientation)
+    {
+    case NORTH:
+        x += 0; y += 1;
+        break;
+    case WEST:
+        x -= 1; y += 0;
+        break;
+    default: break;
+    }
+}
+\end{c++}
+\end{leftbar}
+
+测试通过了，重构非常成功。循环这个微小的\ascii{TDD}环，将场景列举一下，将\ascii{Position::forward}用最笨的方法驱动实现出来。
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("2-left, forward instructions")
+{
+    WHEN_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(forward());
+    
+    THEN_the_robot_cleaner_should_be_in(Position(0, -1, SOUTH));
+}
+
+TEST("3-left, forward instructions")
+{
+    WHEN_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(forward());
+    
+    THEN_the_robot_cleaner_should_be_in(Position(1, 0, EAST));
+}
+
+TEST("4-left, forward instructions")
+{
+    WHEN_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(forward());
+    
+    THEN_the_robot_cleaner_should_be_in(Position(0, 1, NORTH));
+}
+\end{c++}
+\end{leftbar}
+
+最终，\ascii{Position::forward}的实现如下，的确很不光彩，但这也让我信心倍增，毕竟我通过了所有的测试。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::forward()
+{
+    switch (orientation)
+    {
+    case EAST:
+        x += 1; y += 0;
+        break;
+    case SOUTH:
+        x += 0; y -= 1;
+        break;
+    case WEST:
+        x -= 1; y += 0;
+        break;
+    case NORTH:
+        x += 0; y += 1;
+        break;
+    default: break;
+    }
+}
+\end{c++}
+\end{leftbar}
+
+测试通过后，接下来将这个刺眼的\ascii{Position::forward}重构掉。类似于\ascii{turnTo}的实现，\ascii{forward}也存在一个简单、有效的算法，来替换这个脆弱的\ascii{switch-case}实现。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::forward()
+{
+    switch (orientation)
+    {
+    case EAST:
+        x += 1; y += 0;
+        break;
+    case SOUTH:
+        x += 0; y -= 1;
+        break;
+    case WEST:
+        x -= 1; y += 0;
+        break;
+    case NORTH:
+        x += 0; y += 1;
+        break;
+    default: break;
+    }
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    const int offsets[] = { 1, 0, -1, 0 };
+}
+
+void Position::forward()
+{
+    x += offsets[orientation];
+    y += offsets[3 - orientation];
+}
+\end{c++}
+\end{tabular}
+
+测试通过了，重构非常成功，终于将\ascii{switch-case}干掉了。
+
+\end{content}
+
+\section{backward指令}
+
+\begin{content}
+
+\subsection{快速实现}
+
+\ascii{backward}与\ascii{forward}逻辑差不多，它与\ascii{forward}具有逻辑反的关系。鉴于\ascii{forward}的经验，每次一个微小的\ascii{TDD}循环，小步快跑地实现了\ascii{backward}指令。
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("backward instruction")
+{
+    WHEN_I_send_instruction(backward());
+    THEN_the_robot_cleaner_should_be_in(Position(0, -1, NORTH));
+}
+
+TEST("1-left, backward instruction")
+{
+    WHEN_I_send_instruction(left());
+    AND_I_send_instruction(backward());
+    
+    THEN_the_robot_cleaner_should_be_in(Position(1, 0, WEST));
+}
+
+TEST("2-left, backward instruction")
+{
+    WHEN_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(backward());
+  
+    THEN_the_robot_cleaner_should_be_in(Position(0, 1, SOUTH));
+}
+
+TEST("3-left, backward instruction")
+{
+    WHEN_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(backward());
+
+    THEN_the_robot_cleaner_should_be_in(Position(-1, 0, EAST));
+}
+
+TEST("4-left, backward instruction")
+{
+    WHEN_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(left());
+    AND_I_send_instruction(backward());
+
+    THEN_the_robot_cleaner_should_be_in(Position(0, -1, NORTH));
+}
+\end{c++}
+\end{leftbar}
+
+快速实现\ascii{backward}关键字，并将职责委托给\ascii{Position::backward}。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct BackwardInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position.backward();
+        }
+    };
+}
+
+Instruction* backward()
+{
+    return new BackwardInstruction;
+}
+\end{c++}
+\end{leftbar}
+
+按照\ascii{forward}的实现，\ascii{backward}也很容易实现，因为它只是\ascii{forward}的逻辑反。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+namespace
+{
+    const int offsets[] = { 1, 0, -1, 0 };
+}
+
+void Position::forward()
+{
+    x += offsets[orientation];
+    y += offsets[3 - orientation];
+}
+
+void Position::backward()
+{
+    x -= offsets[orientation];
+    y -= offsets[3 - orientation];
+}
+\end{c++}
+\end{leftbar}
+
+至此测试通过了。
+
+\subsection{消除重复}
+
+接下来需要处理将\ascii{Forward}与\ascii{Backward}之间的重复设计，重构第一步先将二者合并为\ascii{MoveOn}操作。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct ForwardInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position.forward();
+        }
+    };
+}
+
+Instruction* forward()
+{
+    return new ForwardInstruction;
+}
+
+namespace
+{
+    struct BackwardInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position.backward();
+        }
+    };
+}
+
+Instruction* backward()
+{
+    return new BackwardInstruction;
+}
+\end{c++}
+&                 
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(bool forward)
+          : step(forward ? 1 : -1)
+        {}
+    
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            position.moveOn(step);
+        }
+        
+    private:
+        int step;
+    };
+}
+
+Instruction* forward()
+{ return new MoveOnInstruction(true); }
+
+Instruction* backward()
+{ return new MoveOnInstruction(false); }
+\end{c++}
+\end{tabular}
+
+同样地，将\ascii{Position}中原来的\ascii{forward}与\ascii{backward}接口合并为一个\ascii{moveOn}接口。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::forward()
+{
+    x += offsets[orientation];
+    y += offsets[3 - orientation];
+}
+
+void Position::backward()
+{
+    x -= offsets[orientation];
+    y -= offsets[3 - orientation];
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::moveOn(int step)
+{
+    x += step*offsets[orientation];
+    y += step*offsets[3-orientation];
+}
+\end{c++}
+\end{tabular}
+
+\subsection{改善表达力}
+
+\ascii{offsets[3-orientation]}的逻辑有些晦涩，一眼看不出来这是什么东西。第一个感觉给它加一个注释，但最好的策略是改善代码本身的可读性。
+
+事实上，\ascii{offsets[orientation]}其实表示的是：当面朝\ascii{orientation}时，\ascii{Robot}执行\ascii{forward}指令时，在\ascii{X}轴上的偏移量；\ascii{offsets[3-orientation]}则表示：当面朝\ascii{orientation}时，\ascii{Robot}执行\ascii{forward}指令时，在\ascii{Y}轴上的偏移量。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+void Position::moveOn(int step)
+{
+    x += step*offsets[orientation];
+    y += step*offsets[3-orientation];
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Position.cpp}]
+inline int Position::getOffsetOfX()
+{ 
+    return offsets[orientation]; 
+}
+
+inline int Position::getStepOfY()
+{ 
+    return offsets[3 - orientation]; 
+}
+
+void Position::moveOn(int step)
+{
+    x += step*getStepOfX();
+    y += step*getStepOfY();
+}
+\end{c++}
+\end{tabular}
+
+至此测试通过，重构完毕。
+
+\end{content}
+
+\section{遗留问题}
+
+\begin{content}
+
+至此，\ascii{MoveOn}已经实现了，但依然存在一些明显的坏味道，将其记录在\ascii{to-do list}中，后续再做改善。
+
+\begin{enum}
+\eitem{\ascii{Position}是一个典型的\ascii{Value Object}，\ascii{turnTo}的实现具有副作用；}
+\eitem{\ascii{Orientation}的枚举成员顺序，\ascii{Position.cpp}中定义的\ascii{orientations, offsets}数组元素的顺序，它们都是“方向顺序”这一知识的三种不同表现形式，具有设计的重复性；更为严重的是\ascii{turnTo, moveOn}的算法实现强依赖于此约定，设计具有脆弱性；}
+\eitem{\ascii{turnTo, moveOn}具有严重的传染性，让设计变得更加耦合；}
+\eitem{测试用例存在重复设计。}
+\end{enum}
+
+\end{content}
+

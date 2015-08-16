@@ -1,0 +1,443 @@
+\begin{savequote}[45mm]
+\ascii{Controlling complexity is the essence of computer programming.} 
+\qauthor{\ascii{- Brian Kernighan}}
+\end{savequote}
+
+\chapter{Repeat} 
+\label{ch:repeat}
+
+\section{需求}
+
+\begin{content}
+
+当\ascii{Robot}收到\ascii{REAPT(instruction, n)}指令后，它会循环执行\ascii{instruction}指令\ascii{n}次。原来在\ascii{(0, 0, N)}，执行\ascii{REAPT(FORWARD(2), 2)}指令后，新的位置为\ascii{(0, 4, NORTH)}；其中\ascii{n}在\ascii{[1..10]}之间。
+
+\end{content}
+
+\section{repeat指令}
+
+\begin{content}
+
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("repeat instruction")
+{
+    WHEN_I_send_instruction(repeat(forward_n(2), 2));
+    THEN_the_robot_cleaner_should_be_in(Position(0, 4, NORTH));
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{实现repeat指令}
+
+提供\ascii{repeat}关键字，并将\ascii{round}指令内联。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* repeat(Instruction* instruction, int n);
+
+inline Instruction* round()
+{ return repeat(right(), 2); }
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Point& point, Orientation& orientation) const)
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(point, orientation);
+            }
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+}
+
+Instruction* repeat(Instruction* instruction, int n)
+{
+    return new RepeatedInstruction(instruction, n);
+}
+\end{c++}
+\end{tabular}
+
+测试通过，功能实现了。
+
+\subsection{边界}
+
+\subsubsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("repeat instruction: n out of bound")
+{
+    WHEN_I_send_instruction(repeat(forward_n(2), 11));
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, NORTH));
+}
+\end{c++}
+\end{leftbar}
+
+\subsubsection{快速实现}
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Point& point, Orientation& orientation) const)
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(point, orientation);
+            }
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+}
+
+Instruction* repeat(Instruction* instruction, int n)
+{
+    return new RepeatedInstruction(instruction, n);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    const int MIN_REPEATED_NUM = 1;
+    const int MAX_REPEATED_NUM = 10;
+
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Point& point, Orientation& orientation) const)
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(point, orientation);
+            }
+        }
+       
+    private:
+        static int protect(int n)
+        {
+            return (MIN_REPEATED_NUM <= n
+              && n <= MAX_REPEATED_NUM) ? n : 0;
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+}
+
+Instruction* repeat(Instruction* instruction, int n)
+{
+    return new RepeatedInstruction(instruction, n);
+}
+\end{c++}
+\end{tabular}
+
+测试通过了，但实现的很不光彩，而且与\ascii{MoveOnInstruction}的边界处理产生了重复设计，不仅仅是实现上的重复，关键在与对越界处理的知识的重复（越界时，规整为\ascii{0}），需要进一步消除重复。
+
+\subsubsection{Null Object}
+
+为了统一\ascii{MoveToInstruction}与\ascii{RepeatedInstruction}的边界处理，此处可引入\ascii{Null Object}模式，将边界处理得更加自然。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    const int MIN_MOVE_NUM = 1;
+    const int MAX_MOVE_NUM = 10;
+    
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(int n, bool forward)
+          : step(prefix(forward)*protect(n)) {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        { 
+            position.moveOn(step); 
+        }
+
+    private:
+        static int prefix(bool forward)
+        { 
+            return forward ? 1 : -1; 
+        }
+        
+        static int protect(int n)
+        {
+            return (MIN_MOVE_NUM <= n 
+              && n <= MAX_MOVE_NUM) ? n : 0;
+        }
+
+    private:
+        int step;
+    };
+}  
+  
+Instruction* forward_n(int n)
+{ 
+    return new MoveOnInstruction(n, true); 
+}
+
+Instruction* backward_n(int n)
+{ 
+    return new MoveOnInstruction(n, false); 
+}
+
+namespace
+{
+    const int MIN_REPEATED_NUM = 1;
+    const int MAX_REPEATED_NUM = 10;
+
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(protect(n))
+        {}
+        
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(position);
+            }
+        }
+        
+    private:
+        static int protect(int n)
+        {
+            return (MIN_REPEATED_NUM <= n 
+              && n <= MAX_REPEATED_NUM) ? n : 0;
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+}
+
+Instruction* repeat(Instruction* instruction, int n)
+{ return new RepeatedInstruction(instruction, n); }
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+#define ASSERT_BETWEEN(num, min, max)   \
+    do {                                \
+       if (num<min || num>max)          \
+          return new EmptyInstruction   \
+    } while(0)
+
+    struct EmptyInstruction : Instruction
+    { 
+        OVERRIDE(void exec(Position&)) {} 
+    };
+}
+
+namespace
+{
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(int n, bool forward)
+          : step(prefix(forward)*n) {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        { 
+            position.moveOn(step); 
+        }
+
+    private:
+        static int prefix(bool forward)
+        { 
+            return forward ? 1 : -1; 
+        }
+        
+    private:
+        int step;
+    };
+    
+    const int MIN_MOVE_NUM = 1;
+    const int MAX_MOVE_NUM = 10;
+
+    Instruction* move_on(bool forward, int n)
+    {
+        ASSERT_BETWEEN(n, MIN_MOVE_NUM, MAX_MOVE_NUM);
+        return new MoveOnInstruction(forward,  n);
+    }
+}
+
+Instruction* forward_n(int n)
+{ 
+    return move_on(true, n); 
+}
+
+Instruction* backward_n(int n)
+{ 
+    return move_on(true, n); 
+}
+
+namespace
+{
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(n)
+        {}
+        
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(position);
+            }
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+    
+    const int MIN_REPEATED_NUM = 1;
+    const int MAX_REPEATED_NUM = 10;
+}
+
+Instruction* repeat(Instruction* instruction, int n)
+{
+    ASSERT_BETWEEN(n, MIN_REPEATED_NUM, MAX_REPEATED_NUM);
+    return new RepeatedInstruction(instruction, n);
+}
+\end{c++}
+\end{tabular}
+
+测试通过了，重构相当成功。
+
+\subsection{消除测试用例的重复}
+
+用例之间存在重复代码，可以进一步进行提取和封装，消除重复代码。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+    
+    TEST("left instruction: 1-times")
+    {
+        WHEN_I_send_instruction(left());
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, WEST));
+    }
+    
+    TEST("left instruction: 2-times")
+    {
+        WHEN_I_send_instruction(left());
+        AND_I_send_instruction(left());
+
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, SOUTH));
+    }
+    
+    TEST("left instruction: 3-times")
+    {
+        WHEN_I_send_instruction(left());
+        AND_I_send_instruction(left());
+        AND_I_send_instruction(left());
+
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, EAST));
+    }
+    
+    TEST("left instruction: 4-times")
+    {
+        WHEN_I_send_instruction(left());
+        AND_I_send_instruction(left());
+        AND_I_send_instruction(left());
+        AND_I_send_instruction(left());
+        
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, NORTH));
+    }
+};
+\end{c++}
+&
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+FIXTURE(RobotCleaner)
+{
+    RobotCleaner robot;
+        
+    TEST("left instruction: 1-times")
+    {
+        WHEN_I_send_instruction(left());
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, WEST));
+    }
+    
+    TEST("left instruction: 2-times")
+    {
+        WHEN_I_send_instruction(repeat(left(), 2));
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, SOUTH));
+    }
+    
+    TEST("left instruction: 3-times")
+    {
+        WHEN_I_send_instruction(repeat(left(), 3));
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, EAST));
+    }
+    
+    TEST("left instruction: 4-times")
+    {
+        WHEN_I_send_instruction(repeat(left(), 4));
+        THEN_the_robot_cleaner_should_be_in(Position(0, 0, NORTH));
+    }
+};
+\end{c++}
+\end{tabular}
+
+测试通过，重构完毕。
+
+\end{content}

@@ -1,0 +1,56 @@
+\begin{savequote}[45mm]
+\ascii{Do the simplest thing that could possibly work.}
+\qauthor{\ascii{- Kent Beck}}
+\end{savequote}
+
+\chapter{Background} 
+\label{ch:background}
+
+\section{问题提出}
+
+\begin{content}
+
+扫地机器人\ascii{(robot cleaner)}，又称自动打扫机、智能吸尘器等。能凭借一定的人工智能，自动在房间内完成地板清理工作。
+
+\ascii{Bosch}公司是领先的扫地机器人制造商。\ascii{Bosch}的工程师研发了一款机器人，它接受远端遥感指令，并完成一些简单的动作。
+
+为了方便控制机器人的导航，工程师使用三元组\ascii{(x, y, d)}来表示机器人的位置信息；其中\ascii{(x,y)}表示机器人的坐标位置，\ascii{d}表示机器人的方向(包括\ascii{East, South, West, North}四个方向)。
+
+假设机器人初始位置为\ascii{(0, 0, N)}，表示机器人处在原点坐标、并朝向北。
+
+\end{content}
+
+\section{技能要求}
+
+\begin{content}
+
+在实现需求的前提下，增加如下一些技能要求。
+
+\begin{enum}
+\eitem{每个迭代\ascii{45}分钟}
+\eitem{结对编程}
+\eitem{不允许使用鼠标}
+\eitem{不允许使用\ascii{IDE}}
+\eitem{坚持使用\ascii{TDD}开发}
+\eitem{持续重构代码}
+\eitem{坚持良好的代码提交习惯}
+\eitem{教练点评的坏味道，下一迭代必须纠正}
+\eitem{参与互相点评的环节}
+\eitem{互相重构不同\ascii{pair}的代码}
+\end{enum}
+
+\end{content}
+
+\section{参考实现}
+
+\begin{content}
+
+本文所使用的代码，读者可以从\ascii{Gitlab}上自由下载、修改和传播。
+
+软件设计是一门艺术，因作者的经验、能力都非常有限，此实现仅作供参考。如果大家发现了问题，或者有更加简单、漂亮的设计，请及时反馈给我，我将感激不尽。
+
+\ascii{Git}地址：\href{https://gitlab.com/horance/robot-cleaner-cpp}{git clone https://gitlab.com/horance/robot-cleaner-cpp.git}
+
+\ascii{Email}地址：\href{mailto:horance@outlook.com}{horance@outlook.com}
+
+\end{content}

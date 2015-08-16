@@ -1,0 +1,104 @@
+\begin{savequote}[45mm]  
+\ascii{Make it work, make it right, make it fast.}
+\qauthor{\ascii{- Kent Beck}}
+\end{savequote}
+
+\chapter{Sequential} 
+\label{ch:sequential}
+
+\section{需求}
+
+\begin{content}
+
+当\ascii{Robot}收到一系列组合指令时，能够依次按指令完成相应的动作。例如收到指令序列：\ascii{[LEFT, FORWARD, RIGHT, BACKWARD, ROUND, FORWARD(2)]}，将依次执行：向左转\ascii{90}度；保持方向并向前移动一个坐标；向右转\ascii{90}度；保持方向并向后退一个坐标；顺时针旋转\ascii{180}度掉头；保持方向向前移动\ascii{2}个坐标。
+
+\end{content}
+
+\section{sequential指令}
+
+\begin{content}
+
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("sequential instruction")
+{
+    WHEN_I_send_instruction(sequential(left(), forward(), round()));
+    THEN_the_robot_cleaner_should_be_in(Position(-1, 0, EAST));
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{实现sequential指令}
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+#include <initializer_list>
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* __sequential(std::initializer_list<Instruction*>);
+
+#define sequential(...) __sequential({ __VA_ARGS__ })
+
+#endif
+\end{c++}
+\end{leftbar}
+
+此处使用了\ascii{C++11}的特性，从而是接口变得更加直观、漂亮。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+#include "robot-cleaner/Instruction.h"
+#include <vector>
+  
+namespace
+{
+    struct SequentialInstruction : Instruction
+    {
+        SequentialInstruction(std::initializer_list<Instruction*> instructions)
+          : instructions(instructions)
+        {}
+
+        ~SequentialInstruction()
+        {
+            for(auto instruction : instructions)
+            {
+                delete instruction;
+            }
+        }
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            for(auto instruction : instructions)
+            {
+                instruction->exec(position);
+            }
+        }
+
+    private:
+        std::vector<Instruction*> instructions;
+    };
+}
+
+Instruction* __sequential(std::initializer_list<Instruction*> instructions)
+{
+    return new SequentialInstruction(instructions);
+}
+\end{c++}
+\end{leftbar}
+
+\ascii{SequentialInstruction}采用了组合模式，整合了“一多”之分，在此使用也非常恰当。
+
+\end{content}

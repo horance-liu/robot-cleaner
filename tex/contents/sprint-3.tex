@@ -1,0 +1,135 @@
+\begin{savequote}[45mm]
+\ascii{Any fool can write code that a computer can understand. Good programmers write code that humans can understand.}
+\qauthor{\ascii{- Martin Flower}}
+\end{savequote}
+
+\chapter{Round} 
+\label{ch:round}
+
+\section{需求}
+
+\begin{content}
+
+\begin{enum}
+\eitem{当\ascii{Robot}收到\ascii{ROUND}指令后，\ascii{Robot}顺时针旋转\ascii{180}度掉头；}
+\eitem{例如\ascii{Robot}原来在\ascii{(0, 0, N)}，执行\ascii{ROUND}指令后，新的位置在\ascii{(0, 0, S)}；}
+\end{enum}
+
+\end{content}
+
+\section{round指令}
+
+\begin{content}
+
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("round instruction")
+{
+    WHEN_I_send_instruction(round());
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, SOUTH));
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{实现round指令}
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* round();
+
+#endif
+\end{c++}
+\end{leftbar}
+
+编译通过了，这次让步子迈大了一点，为了快速让链接和测试通过，先伪实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct RoundInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position = Position(0, 0, SOUTH);
+        }
+    };
+}
+
+Instruction* round()
+{
+    return new RoundInstruction;
+}
+\end{c++}
+\end{leftbar}
+
+测试通过了，接下来改善设计。经过分析，\ascii{round}指令只不过是连续的两次\ascii{right}指令，为此引入\ascii{RepeatedInstruction}的概念，用于修饰\ascii{right}指令，它将\ascii{right}指令连续执行\ascii{2}次。
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct RoundInstruction : Instruction
+    {
+        OVERRIDE(void exec(Position& position))
+        {
+            position = Position(0, 0, SOUTH);
+        }
+    };
+}
+
+Instruction* round()
+{
+    return new RoundInstruction;
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct RepeatedInstruction : Instruction
+    {
+        RepeatedInstruction(Instruction* instruction, int n)
+         : instruction(instruction), n(n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Point& point, Orientation& orientation) const)
+        {
+            for (auto i=0; i<n; i++)
+            {
+                instruction->exec(point, orientation);
+            }
+        }
+
+    private:
+        std::unique_ptr<Instruction> instruction;
+        int n;
+    };
+}
+
+Instruction* round()
+{
+    return new RepeatedInstruction(right(), 2);
+}
+\end{c++}
+\end{tabular}
+
+测试通过了。
+
+\end{content}

@@ -1,0 +1,2 @@
+git clone https://gitlab.com/horance/robot-cleaner-latex.git
+DOC: robot-cleaner-latex/doc/robot-cleaner.pdf

@@ -1,0 +1,313 @@
+\begin{savequote}[45mm]  
+\ascii{Premature optimization is the root of all evil.} 
+\qauthor{\ascii{– Donald Knuth}}
+\end{savequote}
+  
+\chapter{MoveOn(n)} 
+\label{ch:move-on-n}
+
+\section{需求}
+
+\begin{content}
+
+\begin{enum}
+\eitem{当\ascii{Robot}收到\ascii{FORWARD(n)}指令后，\ascii{Robot}保持方向，向前移动\ascii{n}个坐标；}
+\eitem{当\ascii{Robot}收到\ascii{BACKWARD(n)}指令后，\ascii{Robot}保持方向，向后移动\ascii{n}个坐标；}
+\eitem{其中\ascii{n}在\ascii{[1..10]之间}；}
+\end{enum}
+
+例如：
+\begin{enum}
+\eitem{\ascii{Robot}原来在\ascii{(0, 0, N)}，执行\ascii{FORWARD(10)}指令后，新的位置在\ascii{(0, 10, N)}；}
+\eitem{\ascii{Robot}原来在\ascii{(0, 0, N)}，执行\ascii{BACKWARD(10)}指令后，新的位置在\ascii{(0, -10, N)}；}
+\end{enum}
+
+\end{content}
+
+\section{forward\_n指令}
+
+\begin{content}
+
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("forward(n) instruction")
+{
+    WHEN_I_send_instruction(forward_n(10));
+    THEN_the_robot_cleaner_should_be_in(Position(0, 10, NORTH));
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{实现forward\_n指令}
+
+我很有自信地、大胆地将\ascii{forward}委托给\ascii{forward\_n}，步子虽然有点大，而且冒着让已有的用例失败的可能性，但就问题域而言，还在自己控制范围之内。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* forward_n(int n);
+
+inline Instruction* forward()
+{ return forward_n(1); }
+
+Instruction* backward();
+
+#endif
+\end{c++}
+\end{leftbar}
+
+为了保证即有测试通过，此处\ascii{backward}的实现，进行了简单的处理。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(int n, bool forward)
+          : step(prefix(forward)*n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            position.moveOn(step);
+        }
+
+    private:
+        static int prefix(bool forward)
+        {
+            return forward ? 1 : -1;
+        }
+
+    private:
+        int step;
+    };
+}
+
+Instruction* forward_n(int n)
+{ return new MoveOnInstruction(n, true); }
+
+Instruction* backward()
+{ return new MoveOnInstruction(1, false); }
+\end{c++}
+\end{leftbar}
+
+\end{content}
+
+\section{backward\_n指令}
+
+\begin{content}
+    
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={test/robot-cleaner/TestRobotCleaner.h}]
+TEST("forward(n) instruction")
+{
+    WHEN_I_send_instruction(backward_n(10));
+    THEN_the_robot_cleaner_should_be_in(Position(0, -10, NORTH));
+}
+\end{c++}
+\end{leftbar}    
+
+\subsection{实现backward\_n指令}
+
+同样的道理，将\ascii{backward}内联，委托给\ascii{backward\_n}指令。
+
+\begin{leftbar}
+\begin{c++}[caption={include/robot-cleaner/Instruction.h}]
+#ifndef HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+#define HC37C3D94_43F1_4677_BD56_34CB78EFEC75
+
+#include "base/Role.h"
+
+struct Position;
+
+DEFINE_ROLE(Instruction)
+{
+    ABSTRACT(void exec(Position& position));
+};
+
+Instruction* forward_n(int n);
+Instruction* backward_n(int n);
+
+inline Instruction* forward()
+{ return forward_n(1); }
+
+inline Instruction* backward()
+{ return backward_n(1); }
+
+#endif
+\end{c++}
+\end{leftbar}
+
+在将\ascii{backward\_n}显式实现。
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(int n, bool forward)
+          : step(prefix(forward)*n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            position.moveOn(step);
+        }
+
+    private:
+        static int prefix(bool forward)
+        {
+            return forward ? 1 : -1;
+        }
+
+    private:
+        int step;
+    };
+}  
+  
+Instruction* forward_n(int n)
+{
+    return new MoveOnInstruction(n, true);
+}
+
+Instruction* backward_n(int n)
+{
+    return new MoveOnInstruction(n, false);
+}
+\end{c++}
+\end{leftbar}
+
+\end{content}
+
+\section{边界}
+
+\begin{content}
+
+\subsection{测试用例}
+
+\begin{leftbar}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+TEST("forward(n) instruction: n out of bound")
+{
+    WHEN_I_send_instruction(forward_n(11));
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, NORTH));
+}
+
+TEST("backward(n) instruction: n out of bound")
+{
+    WHEN_I_send_instruction(backward_n(11));
+    THEN_the_robot_cleaner_should_be_in(Position(0, 0, NORTH));
+}
+\end{c++}
+\end{leftbar}
+
+\subsection{快速实现}
+
+\begin{tabular}{@{}p{\dimexpr0.45\linewidth-\tabcolsep} 
+                 | p{\dimexpr0.45\linewidth-\tabcolsep}@{}}
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(int n, bool forward)
+          : step(prefix(forward)*n)
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            position.moveOn(step);
+        }
+
+    private:
+        static int prefix(bool forward)
+        {
+            return forward ? 1 : -1;
+        }
+        
+    private:
+        int step;
+    };
+}  
+  
+Instruction* forward_n(int n)
+{
+    return new MoveOnInstruction(n, true);
+}
+
+Instruction* backward_n(int n)
+{
+    return new MoveOnInstruction(n, false);
+}
+\end{c++}
+&
+\begin{c++}[caption={src/robot-cleaner/Instruction.cpp}]
+namespace
+{
+    const int MIN_MOVE_NUM = 1;
+    const int MAX_MOVE_NUM = 10;
+    
+    struct MoveOnInstruction : Instruction
+    {
+        explicit MoveOnInstruction(int n, bool forward)
+          : step(prefix(forward)*protect(n))
+        {}
+
+    private:
+        OVERRIDE(void exec(Position& position))
+        {
+            position.moveOn(step);
+        }
+
+    private:
+        static int prefix(bool forward)
+        {
+            return forward ? 1 : -1;
+        }
+        
+        static int protect(int n)
+        {
+            return (MIN_MOVE_NUM <= n  
+              && n <= MAX_MOVE_NUM) ? n : 0;
+        }
+
+    private:
+        int step;
+    };
+}  
+  
+Instruction* forward_n(int n)
+{
+    return new MoveOnInstruction(n, true);
+}
+
+Instruction* backward_n(int n)
+{
+    return new MoveOnInstruction(n, false);
+}
+\end{c++}
+\end{tabular}
+
+测试通过了，但此处处理的手段还不够光彩，有待进一步改善。
+    
+\end{content}
