@@ -4,3 +4,4 @@ tempfile/
 *.cc
 target/
 out/
+tmp/
