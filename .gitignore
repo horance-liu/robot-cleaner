@@ -1,0 +1,6 @@
+build/
+tempfile/
+*.so
+*.cc
+target/
+out/

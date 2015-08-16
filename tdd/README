@@ -1,0 +1,13 @@
+1. config environment variable: PROJECT_HOME
+
+Mac OS:
+$ vi ~/.bash_profile
+export PROJECT_HOME=.../robot-cleaner-cpp
+
+$ source ~/.bash_profile
+
+Ubuntu:
+$ vi ~/.bash_rc
+export PROJECT_HOME=.../robot-cleaner-cpp
+
+$ source ~/.bash_rc
