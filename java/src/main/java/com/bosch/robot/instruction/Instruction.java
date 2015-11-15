@@ -1,15 +1,10 @@
 package com.bosch.robot.instruction;
 
+import com.bosch.robot.Point;
 import com.bosch.robot.Position;
+import com.bosch.robot.Orientation;
 
-public interface Instruction {    
-    
-    void exec(Position position);
-    
-    static final Instruction EMPTY = new EmptyInstruction();
-    
-    static final class EmptyInstruction implements Instruction {
-        @Override
-        public void exec(Position position) {}
-    }
+@FunctionalInterface
+public interface Instruction {
+  Position exec(Point point, Orientation orientation);
 }

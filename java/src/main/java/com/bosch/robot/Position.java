@@ -1,33 +1,32 @@
 package com.bosch.robot;
 
-public class Position {    
-    public Position(int x, int y, Orientation orientation) {
-        this.point = new Point(x, y);
-        this.orientation = orientation;
-    }
+public class Position {
+  public Position(int x, int y, Orientation orientation) {
+    this(new Point(x, y), orientation);
+  }
 
-    public void turnTo(boolean left) {
-        orientation = orientation.turnTo(left);
+  public Position(Point point, Orientation orientation) {
+    this.point = point;
+    this.orientation = orientation;
+  }
+
+  public Point point() {
+    return point;
+  }
+
+  public Orientation orientation() {
+    return orientation;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (obj instanceof Position) {
+      Position other = (Position) obj;
+      return point.equals(other.point) && orientation == other.orientation;
     }
-    
-    public void moveTo(int step) {
-        point = orientation.moveTo(point, step);
-    }
-    
-    @Override
-    public boolean equals(Object obj) {
-    	if (this == obj) 
-    		return true;
-    	
-    	if (obj.getClass() != Position.class)
-    	    return false;
-    	
-    	Position other = (Position)obj;
-    	
-    	return point.equals(other.point) &&
-    		   orientation == other.orientation;
-    }
-    
-    private Point point;
-    private Orientation orientation;
+    return false;
+  }
+
+  private Point point;
+  private Orientation orientation;
 }

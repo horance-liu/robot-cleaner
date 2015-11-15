@@ -1,16 +1,13 @@
 package com.bosch.robot;
 
-import com.bosch.robot.Orientation;
 import com.bosch.robot.instruction.Instruction;
+import com.bosch.robot.Orientation;
 
 public class RobotCleaner {
-    public void exec(Instruction instruction) {
-        instruction.exec(position);
-    }
-    
-    public Position getPosition() {
-        return position;        
-    }
-    
-    private Position position = new Position(0, 0, Orientation.NORTH);
+  public Position exec(Instruction instruction) {
+    return instruction.exec(point, orientation);
+  }
+
+  private Point point = new Point(0, 0);
+  private Orientation orientation = Orientation.NORTH;
 }

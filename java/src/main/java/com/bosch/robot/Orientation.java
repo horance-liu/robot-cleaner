@@ -1,31 +1,21 @@
 package com.bosch.robot;
 
 public enum Orientation {
-    EAST, SOUTH, WEST, NORTH;
-        
-    Orientation turnTo(boolean left) {
-        return left ? toLeft() : toRight();
-    }
+  EAST(1, 0), SOUTH(0, -1), WEST(-1, 0), NORTH(0, 1);
 
-    Point moveTo(Point point, int step) {
-        return point.move(xOffset(step), yOffset(step));
-    }
-    
-    private int xOffset(int step) {
-        return step * OFFSETS[ordinal()];
-    }
-    
-    private int yOffset(int step) {
-        return step * OFFSETS[3 - ordinal()];
-    }
-    
-    private Orientation toLeft() {
-        return values()[(ordinal() + 3) % 4];
-    }
-    
-    private Orientation toRight() {
-        return values()[(ordinal() + 1) % 4];
-    }
-    
-    private static final int[] OFFSETS = {1, 0, -1, 0};
+  private int xOffset;
+  private int yOffset;
+
+  private Orientation(int xOffset, int yOffset) {
+    this.xOffset = xOffset;
+    this.yOffset = yOffset;
+  }
+
+  public Orientation turnTo(int num) {
+    return values()[(ordinal() + num) % 4];
+  }
+
+  public Point moveTo(int step, Point point) {
+    return point.move(step * xOffset, step * yOffset);
+  }
 }
