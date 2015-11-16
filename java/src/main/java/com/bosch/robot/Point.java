@@ -18,7 +18,7 @@ public class Point {
     }
     return false;
   }
-
+  
   private int x;
   private int y;
 }

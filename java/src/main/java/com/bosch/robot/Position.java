@@ -13,7 +13,7 @@ public class Position {
   public Point point() {
     return point;
   }
-
+  
   public Orientation orientation() {
     return orientation;
   }
