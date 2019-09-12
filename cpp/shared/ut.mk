@@ -1,7 +1,7 @@
 include $(PROJECT_HOME)/shared/defs.mk
 
-TEST_GENERATOR=$(PYTHON) $(TESTNGPP_ROOT)/testngpp/generator/testngppgen.pyc 
-TEST_SUITE_GENERATOR=$(PYTHON) $(TESTNGPP_ROOT)/testngpp/generator/testng-suite-gen.pyc 
+TEST_GENERATOR=$(PYTHON) $(TESTNGPP_ROOT)/testngpp/generator/testngppgen.py
+TEST_SUITE_GENERATOR=$(PYTHON) $(TESTNGPP_ROOT)/testngpp/generator/testng-suite-gen.py
 
 testngpp-include-path=$(TESTNGPP_ROOT)/include
 mockcpp-include-path=$(MOCKCPP_ROOT)/include
